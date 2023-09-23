@@ -26,8 +26,8 @@ impl Login {
         );
 
         Ok(Client::builder()
-            .gzip(true)
-            .cookie_store(true)
+            // .gzip(true)
+            // .cookie_store(true)
             .default_headers(headers)
             .build()?)
     }
