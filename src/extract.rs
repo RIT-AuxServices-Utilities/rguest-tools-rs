@@ -47,7 +47,15 @@ where
             };
             return Err(Error::msg(format!("request failed with {}: {}", status.as_u16(), value.message)))
         }
-        let value = serde_json::from_str::<T>(&body)?;
+        let value = match serde_json::from_str::<T>(&body) {
+            Ok(v) => v,
+            Err(e) => {
+                println!("=== Provided Json Response ===");
+                pretty(&body);
+                println!("==============================");
+                return Err(e.into());
+            }
+        };
         Ok(Self(value))
     }
 }
