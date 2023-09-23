@@ -1,51 +1,71 @@
-use std::{string::FromUtf8Error, io::Read};
+use std::io::Read;
 use reqwest::Response;
 use serde::{de::DeserializeOwned, Deserialize};
+use async_trait::async_trait;
+use anyhow::{Result, Error};
+use serde_json::Value;
 
-#[derive(Deserialize, Debug)]
-pub struct ApiError {
-    pub status: u16,
-    pub message: String
-}
-
-#[derive(Debug)]
-pub enum Error {
-    FailedToReadBytes(reqwest::Error),
-    FailedToParseUTF8(FromUtf8Error),
-    FailedToParseBody(Box<str>),
-    ApiError(ApiError)
-}
-
-async fn parse_body(res: Response) -> Result<String, Error> {
-
-    let bytes = res.bytes().await
-        .map_err(|e| Error::FailedToReadBytes(e))?;
-
-    let body = String::from_utf8(bytes.bytes().flatten().collect())
-        .map_err(|e| Error::FailedToParseUTF8(e))?;
-
+async fn parse_body(res: Response) -> Result<String> {
+    let bytes = res.bytes().await?;
+    let body = String::from_utf8(bytes.bytes().flatten().collect())?;
     Ok(body)
 }
 
+#[async_trait]
+pub trait FromResponse: Sized {
+    async fn from_response(req: Response) -> Result<Self>;
+}
+
+#[derive(Debug, Deserialize)]
+struct JsonMessage {
+    message: String
+}
+
+#[derive(Debug)]
 pub struct Json<T> (pub T);
 
-impl<T> Json<T> 
-where
-    T: DeserializeOwned
-{
-    pub async fn from(res: Response) -> Result<Self, Error> {
-        let status = res.status();
+#[allow(dead_code)]
+fn pretty(s: &str) {
+    let v: Value = serde_json::from_str(s).unwrap();
+    println!("{}", serde_json::to_string_pretty(&v).unwrap());
+}
 
+#[async_trait]
+impl<T> FromResponse for Json<T> 
+where
+    T: DeserializeOwned + Send + Sync
+{
+    async fn from_response(res: Response) -> Result<Self> {
+        let status = res.status();
         let body = parse_body(res).await?;
 
-        if status.as_u16() > 201 {
-            let value = serde_json::from_str::<ApiError>(&body)
-                .map_err(|e| Error::FailedToParseBody(format!("{}", e).into()))?;
-            Err(Error::ApiError(value))
-        } else {
-            let value = serde_json::from_str::<T>(&body)
-                .map_err(|e| Error::FailedToParseBody(format!("{}", e).into()))?; 
-            Ok(Self(value))
+        // pretty(&body);
+
+        if !status.is_success() {
+            let Ok(value) = serde_json::from_str::<JsonMessage>(&body) else {
+                return Err(Error::msg(format!("request failed with status: {}", status.as_u16())))
+            };
+            return Err(Error::msg(format!("request failed with {}: {}", status.as_u16(), value.message)))
         }
+        let value = serde_json::from_str::<T>(&body)?;
+        Ok(Self(value))
     }
+}
+
+#[async_trait]
+pub trait IntoBody<R> 
+where
+    R: FromResponse
+{
+    async fn into_body(self) -> Result<R>;
+}
+
+#[async_trait]
+impl<R> IntoBody<R> for Response
+where
+    R: FromResponse
+{
+    async fn into_body(self) -> Result<R> {
+        R::from_response(self).await
+    } 
 }
