@@ -1,10 +1,12 @@
 use std::fmt::Display;
+use reqwest::Client;
 use serde::Deserialize;
-use crate::{api::API_CLIENT, extract::{Json, IntoBody}};
-use super::{role::Role, pick};
-use anyhow::{Result, Error};
+use crate::extract::{Json, IntoBody};
 
-#[derive(Deserialize, Debug, Clone, Default)]
+use super::role::Role;
+use anyhow::Result;
+
+#[derive(Deserialize, Clone, Default)]
 pub struct Tenant {
     #[serde(rename = "tenantId")]
     pub id: String,
@@ -19,18 +21,18 @@ impl Display for Tenant {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct RolesRequest {
     #[serde(rename = "contextRoles")]
     roles: Vec<Role>
 }
 
-#[derive(Debug, Deserialize)]
-struct BusinessContext {
+#[derive(Deserialize)]
+pub struct BusinessContext {
     #[serde(rename = "businessContextId")]
-    id: String,
+    pub id: String,
     #[serde(rename = "storeName")]
-    name: String
+    pub name: String
 }
 
 impl Display for BusinessContext {
@@ -42,53 +44,28 @@ impl Display for BusinessContext {
 
 impl Tenant {
 
-    async fn get_business_context(&self) -> Result<String> {
-        let req = API_CLIENT.lock().await
+    pub async fn get_contexts(&self, client: &Client) -> Result<Vec<BusinessContext>> {
+        let req = client
            .get(format!("https://buy.rguest.com/api/buy/kiosk/tenants/{}/storeInfos", self.id));
 
         let res = req.send().await?;
         
         let Json(ctxs): Json<Vec<BusinessContext>> = res.into_body().await?;
-
-        let bctx = pick(&ctxs, "business contexts").await;
-
-        println!("Using business context: {bctx}");
-
-        Ok(bctx.id.clone())
+        
+        Ok(ctxs)
     }
 
-    async fn get_role(&self) -> Result<Role> {
+    pub async fn get_roles(&self, client: &Client) -> Result<Vec<Role>> {
         
-        let req = API_CLIENT.lock().await
+        let req = client
             .get(format!("https://buy.rguest.com/user-service/user/tenants/{}/users/details", self.id));
         
         let res = req.send().await?;
 
         let Json(roles): Json<RolesRequest> = res.into_body().await?;
-        let roles = roles.roles;
 
-        if roles.len() < 1 {
-            return Err(Error::msg("No roles were found on tenant"))
-        }
-        
-        let role = pick(&roles, "roles").await;
-
-        println!("Using role: {role}");
-       
-        Ok(role.clone())
+        Ok(roles.roles)
     
     }
 
-    pub async fn get_context_id(&self) -> Result<String> {
-
-        let role = self.get_role().await?;
-
-        if role.id == "Default" {
-            Ok(self.get_business_context().await?)
-        } else {
-            Ok(role.id)
-        }
-
-    }
-    
 }

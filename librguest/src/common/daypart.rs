@@ -1,9 +1,9 @@
 use anyhow::Result;
 use serde::Deserialize;
 use time::{Time, format_description};
-use crate::{api::{auth::context::Context, API_CLIENT}, extract::{IntoBody, Json}};
+use crate::{Context, extract::{Json, IntoBody}};
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct DaypartRequest {
     #[serde(rename = "startTime")]
     start_time: String,
@@ -21,7 +21,7 @@ impl Daypart {
 
     pub async fn get_from_context(ctx: &Context) -> Result<Vec<Self>> {
         
-        let req = API_CLIENT.lock().await
+        let req = ctx.client
             .get(format!(
                 "https://buy.rguest.com/api/buy/kiosk/tenants/{}/businessContexts/{}/day-parts",
                 ctx.tenant.id,

@@ -1,8 +1,9 @@
 use serde::Deserialize;
 use anyhow::Result;
-use crate::{api::{auth::context::Context, API_CLIENT}, extract::{IntoBody, Json}};
 
-#[derive(Debug, Deserialize)]
+use crate::{Context, extract::{IntoBody, Json}};
+
+#[derive(Deserialize)]
 pub struct Location {
     pub id: String,
     pub name: String,
@@ -13,7 +14,7 @@ pub struct Location {
 impl Location {
 
     pub async fn get_from_context(ctx: &Context) -> Result<Vec<Self>> {
-        let req = API_CLIENT.lock().await
+        let req = ctx.client
             .get(format!(
                 "https://buy.rguest.com/api/buy/kiosk/tenants/{}/businessContexts/{}/displayProfiles",
                 &ctx.tenant.id,

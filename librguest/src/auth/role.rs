@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use serde::Deserialize;
 
-#[derive(Default, Debug, Deserialize, Clone)]
+#[derive(Default, Deserialize, Clone)]
 pub struct Role {
     #[serde(rename = "contextId")]
     pub id: String,
